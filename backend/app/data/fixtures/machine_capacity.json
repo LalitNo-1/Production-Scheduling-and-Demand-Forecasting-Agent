@@ -1,0 +1,62 @@
+[
+  {
+    "machine_id": "MCH-01",
+    "machine_name": "Assembly Line Alpha",
+    "compatible_skus": [
+      "SKU-A",
+      "SKU-B"
+    ],
+    "shifts": [
+      {
+        "shift": 1,
+        "capacity_hours": 8.0,
+        "utilization_pct": 72
+      },
+      {
+        "shift": 2,
+        "capacity_hours": 8.0,
+        "utilization_pct": 65
+      }
+    ]
+  },
+  {
+    "machine_id": "MCH-02",
+    "machine_name": "Assembly Line Beta",
+    "compatible_skus": [
+      "SKU-B",
+      "SKU-C"
+    ],
+    "shifts": [
+      {
+        "shift": 1,
+        "capacity_hours": 8.0,
+        "utilization_pct": 80
+      },
+      {
+        "shift": 2,
+        "capacity_hours": 8.0,
+        "utilization_pct": 55
+      }
+    ]
+  },
+  {
+    "machine_id": "MCH-03",
+    "machine_name": "Finishing Cell Gamma",
+    "compatible_skus": [
+      "SKU-A",
+      "SKU-C"
+    ],
+    "shifts": [
+      {
+        "shift": 1,
+        "capacity_hours": 6.0,
+        "utilization_pct": 90
+      },
+      {
+        "shift": 2,
+        "capacity_hours": 6.0,
+        "utilization_pct": 40
+      }
+    ]
+  }
+]
