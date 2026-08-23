@@ -4,6 +4,9 @@ import GanttChart from './components/GanttChart';
 import ForecastChart from './components/ForecastChart';
 import ProposedChanges from './components/ProposedChanges';
 import AuditLog from './components/AuditLog';
+import CreateJobModal from './components/CreateJobModal';
+import ManageMachinesModal from './components/ManageMachinesModal';
+import ManageSKUsModal from './components/ManageSKUsModal';
 import './index.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -46,13 +49,31 @@ function useStats(refreshKey) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('schedule');
   const [selectedSku, setSelectedSku] = useState('SKU-A');
+  const [forecastHorizon, setForecastHorizon] = useState(30);
+  const [allSkus, setAllSkus] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentResult, setAgentResult] = useState(null);
+  
+  // Modals state
+  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  const [isManageMachinesOpen, setIsManageMachinesOpen] = useState(false);
+  const [isManageSKUsOpen, setIsManageSKUsOpen] = useState(false);
+
   const agentStatus = useAgentStatus();
   const stats = useStats(refreshKey);
 
   const refresh = () => setRefreshKey(k => k + 1);
+
+  // Fetch SKU list
+  useEffect(() => {
+    axios.get(`${API}/skus`).then(r => {
+      setAllSkus(r.data || []);
+      if (r.data.length > 0 && !selectedSku) {
+        setSelectedSku(r.data[0].sku);
+      }
+    }).catch(() => {});
+  }, [refreshKey]);
 
   const runAgent = async () => {
     setAgentLoading(true);
@@ -60,7 +81,7 @@ export default function App() {
     try {
       const res = await axios.post(`${API}/agent/run`, {
         sku: selectedSku,
-        horizon_days: 30,
+        horizon_days: forecastHorizon,
       });
       setAgentResult(res.data);
       if (res.data.proposed_change_id) {
@@ -74,30 +95,71 @@ export default function App() {
     }
   };
 
+  const currentSkuObj = allSkus.find(s => s.sku === selectedSku) || {
+    sku: selectedSku,
+    display_name: selectedSku,
+    description: '',
+    units_per_hour: 50
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'schedule':
         return (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-              <h1 className="section-title">Production Schedule</h1>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Filter SKU:</label>
-                <select id="schedule-sku-filter" className="form-select" value={selectedSku} onChange={e => setSelectedSku(e.target.value)}>
-                  <option value="">All SKUs</option>
-                  <option value="SKU-A">SKU-A</option>
-                  <option value="SKU-B">SKU-B</option>
-                  <option value="SKU-C">SKU-C</option>
-                </select>
-                <button className="btn btn-ghost btn-sm" onClick={refresh}>↻ Refresh</button>
+              <div>
+                <h1 className="section-title">Production Schedule</h1>
+                <p className="section-sub">Machine cell timeline and active job order allocation</p>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setIsCreateJobOpen(true)}
+                  id="schedule-new-job-btn"
+                >
+                  ➕ Schedule Order
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setIsManageMachinesOpen(true)}
+                  title="Add, rename or edit machines"
+                >
+                  🏭 Machines
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setIsManageSKUsOpen(true)}
+                  title="Rename product lines and rates"
+                >
+                  📦 Products
+                </button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 6 }}>
+                  <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>SKU:</label>
+                  <select
+                    id="schedule-sku-filter"
+                    className="form-select"
+                    value={selectedSku}
+                    onChange={e => setSelectedSku(e.target.value)}
+                  >
+                    <option value="">All SKUs</option>
+                    {allSkus.map(s => (
+                      <option key={s.sku} value={s.sku}>
+                        {s.sku} ({s.display_name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={refresh}>↻</button>
               </div>
             </div>
+
             <div className="card" style={{ marginBottom: 20 }}>
               <div className="card-header">
-                <span className="card-title">🏭 Gantt View — Machine Cells</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Dashed = committed delivery date</span>
+                <span className="card-title">🏭 Interactive Gantt Timeline — Machine Cells</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Click any job bar to rename or edit</span>
               </div>
-              <GanttChart sku={selectedSku || null} refreshKey={refreshKey} />
+              <GanttChart sku={selectedSku || null} refreshKey={refreshKey} onRefresh={refresh} />
             </div>
           </div>
         );
@@ -105,29 +167,124 @@ export default function App() {
       case 'forecast':
         return (
           <div>
+            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
               <div>
-                <h1 className="section-title">Demand Forecast</h1>
-                <p className="section-sub">Prophet model with 90-day backtest MAPE and confidence bands</p>
+                <h1 className="section-title">Demand Forecasting & Capacity Planning</h1>
+                <p className="section-sub">Time-series forecasting with uncertainty envelopes and statistical confidence gating</p>
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                <select id="forecast-sku-select" className="form-select" value={selectedSku} onChange={e => setSelectedSku(e.target.value)}>
-                  <option value="SKU-A">SKU-A</option>
-                  <option value="SKU-B">SKU-B</option>
-                  <option value="SKU-C">SKU-C</option>
-                </select>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setIsManageSKUsOpen(true)}>
+                  📦 Rename Product Lines
+                </button>
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 2 }}>
+                  {[14, 30, 60].map(h => (
+                    <button
+                      key={h}
+                      className="btn btn-sm"
+                      style={{
+                        background: forecastHorizon === h ? 'var(--accent-blue)' : 'transparent',
+                        color: forecastHorizon === h ? '#0a0e1a' : 'var(--text-secondary)',
+                        padding: '4px 10px',
+                        fontSize: 11,
+                      }}
+                      onClick={() => setForecastHorizon(h)}
+                    >
+                      {h} Days
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="page-grid-2" style={{ marginBottom: 20 }}>
-              {['SKU-A', 'SKU-B', 'SKU-C'].map(s => (
-                <div key={s} className="card" style={{ cursor: 'pointer', border: s === selectedSku ? '1px solid var(--accent-blue)' : undefined }}
-                  onClick={() => setSelectedSku(s)}>
-                  <div className="card-header">
-                    <span className="card-title">📈 {s}</span>
+
+            {/* Product Selector Pills */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto', paddingBottom: 4 }}>
+              {allSkus.map(s => {
+                const isSelected = s.sku === selectedSku;
+                return (
+                  <div
+                    key={s.sku}
+                    onClick={() => setSelectedSku(s.sku)}
+                    style={{
+                      background: isSelected ? 'var(--bg-card-hover)' : 'var(--bg-card)',
+                      border: isSelected ? '1.5px solid var(--accent-blue)' : '1px solid var(--border)',
+                      boxShadow: isSelected ? '0 0 16px rgba(99,179,237,0.2)' : 'none',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      minWidth: 200,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span className={`badge sku-${s.sku.split('-')[1]?.toLowerCase() || 'a'}`} style={{ fontSize: 11 }}>
+                      {s.sku}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                        {s.display_name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        ⚡ {s.units_per_hour} units/hr
+                      </div>
+                    </div>
                   </div>
-                  <ForecastChart sku={s} horizon={30} refreshKey={refreshKey} />
+                );
+              })}
+            </div>
+
+            {/* Primary Hero Forecast Card */}
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div className="card-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+                <div>
+                  <span className="card-title" style={{ fontSize: 16 }}>
+                    📈 {selectedSku} — {currentSkuObj.display_name}
+                  </span>
+                  {currentSkuObj.description && (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {currentSkuObj.description}
+                    </div>
+                  )}
                 </div>
-              ))}
+                <button className="btn btn-ghost btn-sm" onClick={refresh}>↻ Refresh</button>
+              </div>
+
+              <ForecastChart
+                sku={selectedSku}
+                horizon={forecastHorizon}
+                refreshKey={refreshKey}
+                isCompact={false}
+              />
+            </div>
+
+            {/* Cross-Product Comparison */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12, letterSpacing: '0.8px' }}>
+                Multi-Product Comparison ({forecastHorizon}-Day Outlook)
+              </div>
+              <div className="page-grid-3">
+                {allSkus.map(s => (
+                  <div
+                    key={s.sku}
+                    className="card"
+                    style={{
+                      cursor: 'pointer',
+                      border: s.sku === selectedSku ? '1px solid var(--accent-blue)' : undefined,
+                      padding: 14,
+                    }}
+                    onClick={() => setSelectedSku(s.sku)}
+                  >
+                    <div className="card-header" style={{ marginBottom: 8 }}>
+                      <span className="card-title" style={{ fontSize: 12 }}>
+                        {s.sku} — {s.display_name}
+                      </span>
+                    </div>
+                    <ForecastChart sku={s.sku} horizon={forecastHorizon} refreshKey={refreshKey} isCompact={true} />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         );
@@ -276,6 +433,25 @@ export default function App() {
       <main className="main-content">
         {renderContent()}
       </main>
+
+      {/* Modals */}
+      <CreateJobModal
+        isOpen={isCreateJobOpen}
+        onClose={() => setIsCreateJobOpen(false)}
+        onSuccess={refresh}
+      />
+
+      <ManageMachinesModal
+        isOpen={isManageMachinesOpen}
+        onClose={() => setIsManageMachinesOpen(false)}
+        onUpdated={refresh}
+      />
+
+      <ManageSKUsModal
+        isOpen={isManageSKUsOpen}
+        onClose={() => setIsManageSKUsOpen(false)}
+        onUpdated={refresh}
+      />
     </div>
   );
 }

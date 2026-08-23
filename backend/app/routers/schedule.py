@@ -3,14 +3,14 @@ Schedule endpoints — CRUD for job orders, propose, commit, rollback, audit log
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from app.models.db import get_db, JobOrder, ProposedChange, AuditLog
+from app.models.db import get_db, JobOrder, ProposedChange, AuditLog, SKUMetadata
 from app.models.schemas import (
-    ScheduleResponse, JobOrderOut,
+    ScheduleResponse, JobOrderOut, JobOrderCreateRequest, JobOrderUpdateRequest,
     ProposeChangeRequest, ProposedChangeResponse, SimulationResult,
     CommitRequest, CommitResponse,
     RejectRequest,
@@ -48,6 +48,89 @@ def get_current_schedule(
         total_jobs=len(jobs),
         filters_applied=filters,
     )
+
+
+@router.post("/job-orders", response_model=JobOrderOut)
+def create_job_order(req: JobOrderCreateRequest, db: Session = Depends(get_db)):
+    """Directly schedule a new production job order."""
+    # Generate job_id if not provided
+    job_id = req.job_id
+    if not job_id:
+        count = db.query(JobOrder).count() + 1
+        job_id = f"JOB-{count:03d}"
+
+    # Calculate end_time if missing
+    start_time = req.start_time
+    end_time = req.end_time
+    if not end_time:
+        # Check SKU run rate
+        sku_meta = db.query(SKUMetadata).filter(SKUMetadata.sku == req.sku).first()
+        rate = sku_meta.units_per_hour if sku_meta and sku_meta.units_per_hour else 50.0
+        duration_hrs = req.duration_hours or (req.quantity / rate)
+        end_time = start_time + timedelta(hours=duration_hrs)
+
+    job = JobOrder(
+        job_id=job_id,
+        job_name=req.job_name or f"{req.sku} Production Run",
+        sku=req.sku,
+        quantity=req.quantity,
+        machine_id=req.machine_id,
+        start_time=start_time,
+        end_time=end_time,
+        committed_delivery_date=req.committed_delivery_date,
+        has_committed_delivery=req.has_committed_delivery or (req.committed_delivery_date is not None),
+        status="scheduled",
+        priority=req.priority,
+        margin_per_unit=req.margin_per_unit,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return JobOrderOut.model_validate(job)
+
+
+@router.put("/job-orders/{job_id}", response_model=JobOrderOut)
+def update_job_order(job_id: str, req: JobOrderUpdateRequest, db: Session = Depends(get_db)):
+    """Rename or update timing/machine/quantity of a job order."""
+    job = db.query(JobOrder).filter(JobOrder.job_id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    if req.job_name is not None:
+        job.job_name = req.job_name
+    if req.sku is not None:
+        job.sku = req.sku
+    if req.quantity is not None:
+        job.quantity = req.quantity
+    if req.machine_id is not None:
+        job.machine_id = req.machine_id
+    if req.start_time is not None:
+        job.start_time = req.start_time
+    if req.end_time is not None:
+        job.end_time = req.end_time
+    if req.committed_delivery_date is not None:
+        job.committed_delivery_date = req.committed_delivery_date
+    if req.has_committed_delivery is not None:
+        job.has_committed_delivery = req.has_committed_delivery
+    if req.status is not None:
+        job.status = req.status
+    if req.priority is not None:
+        job.priority = req.priority
+
+    db.commit()
+    db.refresh(job)
+    return JobOrderOut.model_validate(job)
+
+
+@router.delete("/job-orders/{job_id}")
+def delete_job_order(job_id: str, db: Session = Depends(get_db)):
+    """Cancel / delete a job order."""
+    job = db.query(JobOrder).filter(JobOrder.job_id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    db.delete(job)
+    db.commit()
+    return {"status": "deleted", "job_id": job_id}
 
 
 @router.post("/propose-schedule-change", response_model=ProposedChangeResponse)

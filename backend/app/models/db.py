@@ -68,12 +68,24 @@ class MachineCapacity(Base):
     compatible_skus = Column(JSON, default=list)     # list of SKUs this machine can process
 
 
+class SKUMetadata(Base):
+    """Product SKU metadata including display name and throughput rate."""
+    __tablename__ = "sku_metadata"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sku = Column(String(50), unique=True, nullable=False, index=True)
+    display_name = Column(String(100), nullable=True)
+    description = Column(String(255), nullable=True)
+    units_per_hour = Column(Float, default=50.0)
+
+
 class JobOrder(Base):
     """A production job order — the current schedule."""
     __tablename__ = "job_orders"
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(String(50), unique=True, nullable=False, index=True)
+    job_name = Column(String(150), nullable=True)
     sku = Column(String(50), nullable=False, index=True)
     quantity = Column(Float, nullable=False)
     machine_id = Column(String(50), nullable=False)
@@ -168,5 +180,18 @@ def get_db():
 
 
 def create_all_tables():
-    """Create all tables. Called at startup if they don't exist."""
+    """Create all tables and auto-migrate missing columns if necessary."""
     Base.metadata.create_all(bind=engine)
+    
+    # Auto-add columns if migrating an existing SQLite database
+    with engine.connect() as conn:
+        try:
+            conn.execute(__import__("sqlalchemy").text("ALTER TABLE job_orders ADD COLUMN job_name VARCHAR(150)"))
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute(__import__("sqlalchemy").text("ALTER TABLE machine_capacity ADD COLUMN machine_name VARCHAR(100)"))
+            conn.commit()
+        except Exception:
+            pass

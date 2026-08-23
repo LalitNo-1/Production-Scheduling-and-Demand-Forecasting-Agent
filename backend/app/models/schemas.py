@@ -56,11 +56,41 @@ class ShiftCapacity(BaseModel):
 
 class MachineCapacityResponse(BaseModel):
     machine_id: str
-    machine_name: str
+    machine_name: Optional[str] = None
     shifts: List[ShiftCapacity]
-    compatible_skus: List[str]
+    compatible_skus: List[str] = []
     date_range_start: Optional[datetime] = None
     date_range_end: Optional[datetime] = None
+
+
+class MachineCreateRequest(BaseModel):
+    machine_id: str
+    machine_name: str
+    shifts: Optional[List[ShiftCapacity]] = None
+    capacity_hours: float = 8.0
+    compatible_skus: List[str] = []
+
+
+class MachineUpdateRequest(BaseModel):
+    machine_name: Optional[str] = None
+    capacity_hours: Optional[float] = None
+    compatible_skus: Optional[List[str]] = None
+
+
+class SKUMetadataOut(BaseModel):
+    sku: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    units_per_hour: float = 50.0
+
+    class Config:
+        from_attributes = True
+
+
+class SKUMetadataUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    units_per_hour: Optional[float] = None
 
 
 class MaintenanceWindowOut(BaseModel):
@@ -78,6 +108,7 @@ class MaintenanceWindowOut(BaseModel):
 
 class JobOrderOut(BaseModel):
     job_id: str
+    job_name: Optional[str] = None
     sku: str
     quantity: float
     machine_id: str
@@ -86,11 +117,39 @@ class JobOrderOut(BaseModel):
     committed_delivery_date: Optional[datetime] = None
     has_committed_delivery: bool = False
     status: str
-    priority: int
-    margin_per_unit: float
+    priority: int = 5
+    margin_per_unit: float = 1.0
 
     class Config:
         from_attributes = True
+
+
+class JobOrderCreateRequest(BaseModel):
+    job_id: Optional[str] = None
+    job_name: Optional[str] = None
+    sku: str
+    quantity: float
+    machine_id: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    duration_hours: Optional[float] = None
+    committed_delivery_date: Optional[datetime] = None
+    has_committed_delivery: bool = False
+    priority: int = 5
+    margin_per_unit: float = 1.0
+
+
+class JobOrderUpdateRequest(BaseModel):
+    job_name: Optional[str] = None
+    sku: Optional[str] = None
+    quantity: Optional[float] = None
+    machine_id: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    committed_delivery_date: Optional[datetime] = None
+    has_committed_delivery: Optional[bool] = None
+    status: Optional[str] = None
+    priority: Optional[int] = None
 
 
 class ScheduleResponse(BaseModel):
