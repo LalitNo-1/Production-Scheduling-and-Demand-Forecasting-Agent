@@ -1,5 +1,8 @@
 name: Azure Static Web Apps CI/CD
 
+env:
+  VITE_API_URL: https://productionschedulingdemandforecasting-f5avg6c3fpb3anb2.westus3-01.azurewebsites.net/api
+
 on:
   push:
     branches:
